@@ -382,7 +382,6 @@ class Game {
    * @returns {Boolean}
    */
   static IsType(type, unknownGameObject) {
-    console.log(type.name);
     return unknownGameObject.constructor.name === type.name;
   }
 
@@ -878,6 +877,14 @@ class Missile extends GameObject {
     this.fnCircular();
   }
 
+  collideWall() {
+    const collide = Game.checkCol(this);
+    if (!collide.collided) return;
+    if (Game.IsType(Wall, collide.colliderInformation.conditions.gameObject)) {
+      Game.destroy(this);
+    }
+  }
+
   update() {
     if (!this.player || this.player.destroyed) {
       Game.destroy(this);
@@ -899,6 +906,7 @@ class Missile extends GameObject {
     newPos = newPos.multiply(4);
     newPos = newPos.add(this.position);
     this.pos(newPos.x, newPos.y);
+    this.collideWall();
   }
 }
 
