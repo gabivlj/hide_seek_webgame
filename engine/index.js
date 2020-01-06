@@ -7,8 +7,14 @@ const canvas = document.createElement('canvas');
 const ctx = canvas.getContext('2d');
 document.body.appendChild(canvas);
 
+/**
+ * @description This function is in charge of calling a circular drawing to a desired "this" object.
+ *              Bind it to the class that you wanna work with, make sure that it has colorCircular and path
+ *              attributes and then call it on ownRendering()
+ */
 function circularColorStandard() {
-  ctx.fillStyle = this.colorMis.stringColor();
+  this.path = new Path2D();
+  ctx.fillStyle = this.colorCircular.stringColor();
   this.path.moveTo(
     this.position.x + this.width / 2,
     this.position.y + this.height / 2,
@@ -45,16 +51,19 @@ function Clamp(value, x, y) {
   return value;
 }
 
-function waitForImages(a) {
+/**
+ * @param {Image[]} images The images array
+ * @returns {Promise} Whenever the images are done, it returns the completed promise, don't catch an error because we don't use reject here.
+ */
+function waitForImages(images) {
   return new Promise(res => {
     const interval = setInterval(() => {
       let charged = true;
-      a.forEach(a => {
-        if (!a.complete) {
+      images.forEach(image => {
+        if (!image.complete) {
           charged = false;
         }
       });
-
       if (charged) {
         res(true);
       }
@@ -93,6 +102,11 @@ function copy(array) {
   return newArray;
 }
 
+/**
+ * @description Vec2 help class. Operations don't change the Vec2 instance,
+ *              it returns a new one following a functional programming
+ *              approach.
+ */
 class Vec2 {
   constructor(x, y) {
     this.x = x;
@@ -109,13 +123,25 @@ class Vec2 {
     return V;
   }
 
+  /**
+   * @param {number} number
+   * @returns {Vec2}
+   */
   multiply(number) {
     return new Vec2(this.x * number, this.y * number);
   }
 
+  divide(number) {
+    return new Vec2(this.x / number, this.y / number);
+  }
+
+  /**
+   * @description Returns normalized vector.
+   * @returns {Vec2} Normalized vector.
+   */
   normalized() {
     const m = this.magnitude();
-    if (m >= 0) return new Vec2(this.x / m, this.y / m);
+    if (m >= 0) return this.divide(m);
     return this;
   }
 
@@ -136,6 +162,10 @@ class Vec2 {
     return V;
   }
 
+  /**
+   * @param {number} other
+   * @returns {Vec2}
+   */
   add(other) {
     const V = new Vec2(this.x + other.x, this.y + other.y);
     return V;
@@ -214,6 +244,22 @@ class Game {
     this.stop = false;
     this.animationFr = 0;
     this.animation = 0;
+    this.scene = null;
+  }
+
+  /**
+   *
+   * @param {Vec2} position position
+   */
+  static IsPositionOutOfBounds(position) {
+    const game = _____actualGame;
+    if (!game.scene) return null;
+    return (
+      position.y < 0 ||
+      position.y >= game.scene.height ||
+      game.scene.width < position.x ||
+      position.x < 0
+    );
   }
 
   static game() {
@@ -299,13 +345,13 @@ class Game {
   }
 
   async start(scene, sprites = []) {
+    this.scene = scene;
     if (this.reqAnimationFrame) {
       this.gameObjects = [];
       clearInterval(this.reqAnimationFrame);
       window.cancelAnimationFrame(this.animation);
       this.then = 0;
     }
-    console.log(scene.gameObjects);
     this.gameObjects = copy(scene.gameObjects);
     this.gameObjects.forEach((g, index) => {
       g.instanceID = guidGenerator();
@@ -331,7 +377,16 @@ class Game {
   }
 
   /**
-   *
+   * @param {Object} type
+   * @param {GameObject} unknownGameObject
+   * @returns {Boolean}
+   */
+  static IsType(type, unknownGameObject) {
+    console.log(type.name);
+    return unknownGameObject.constructor.name === type.name;
+  }
+
+  /**
    * @param {String} type
    * @returns {GameObject[]}
    */
@@ -369,8 +424,7 @@ class Game {
     _____actualGame.destroy(gameObject);
   }
 
-  update() {
-    console.log(this.gameObjects);
+  update(frequencyRate = 15) {
     const upd = () => {
       const now = Date.now();
       const delta = now - this.then;
@@ -389,13 +443,10 @@ class Game {
       });
 
       this.then = now;
-
-      // Request to do this again ASAP
-      // this.reqAnimationFrame = requestAnimationFrame(upd);
     };
     this.reqAnimationFrame = setInterval(() => {
       this.animation = requestAnimationFrame(upd);
-    }, 15);
+    }, frequencyRate);
   }
 }
 
@@ -410,7 +461,7 @@ class Player extends GameObject {
     this.path = new Path2D();
     this.hp = 100;
     this.colliding = { top: false, left: false, right: false, down: false };
-    this.state = { hiding: false };
+    this.state = { hiding: false, won: false, canShoot: true };
   }
 
   ownRendering() {
@@ -430,12 +481,52 @@ class Player extends GameObject {
     ctx.fill(this.path);
   }
 
+  handleBulletLogic(l, r, u, d) {
+    if (!l && !r && !u && !d) return;
+    if (l && r) r = 1;
+    if (u && d) u = 1;
+    if (!this.state.canShoot) {
+      return;
+    }
+    const truePosition = new Vec2(
+      this.position.x - this.width / 2,
+      this.position.y + this.height / 2,
+    );
+    const signX = r - l;
+    const signY = u - d;
+    const newPos = truePosition.add(
+      new Vec2(signX * this.width, signY * this.height),
+    );
+    Game.instantiate(Bullet, signX, signY, newPos);
+    this.state.canShoot = false;
+    setTimeout(() => {
+      this.state.canShoot = true;
+    }, 500);
+  }
+
   start() {}
 
   update(dt) {
+    let [w, a, d, s, q, lt, rt, up, dwn] = Input.getInputs(
+      'w',
+      'a',
+      'd',
+      's',
+      'q',
+      'left',
+      'right',
+      'up',
+      'down',
+    );
+    this.handleBulletLogic(lt, rt, up, dwn);
     this.colliding = { top: false, left: false, right: false, down: false };
+    if (this.hp <= 0) {
+      Game.destroy(this);
+      setTimeout(() => window.location.reload(), 2000);
+      return;
+    }
     if (!this.input) return;
-    let [w, a, d, s, q] = Input.getInputs('w', 'a', 'd', 's', 'q');
+
     this.state.hiding = !!q;
     if (this.state.hiding) return;
     this.signX = a - d ? a - d : this.signX;
@@ -469,6 +560,48 @@ class Player extends GameObject {
       this.position.x + (-a + d) * dt * this.speed,
       this.position.y + (-w + s) * this.speed * dt,
     );
+  }
+}
+
+class Bullet extends GameObject {
+  constructor(signX, signY, position) {
+    super(position, 20, 20, [], { collider: true });
+    this.colorCircular = {};
+    this.path = undefined;
+    this.signX = signX;
+    this.signY = signY;
+    this.speed = 500;
+  }
+
+  start() {
+    this.path = new Path2D();
+    this.colorCircular = new RGB(200, 0, 0, 1);
+    this.renderingFn = circularColorStandard.bind(this);
+  }
+
+  ownRendering() {
+    this.renderingFn();
+  }
+
+  update(dt) {
+    const collider = Game.checkCol(this);
+    this.pos(
+      this.position.x + this.signX * this.speed * dt,
+      this.position.y - this.signY * this.speed * dt,
+    );
+    if (Game.IsPositionOutOfBounds(this.position)) Game.destroy(this);
+    if (!collider.collided) return;
+    const { gameObject } = collider.colliderInformation.conditions;
+    if (Game.IsType(Player, gameObject)) return;
+    if (Game.IsType(Wall, gameObject)) Game.destroy(this);
+    if (
+      Game.IsType(MissileThrower, gameObject) ||
+      Game.IsType(Missile, gameObject) ||
+      Game.IsType(Watcher, gameObject)
+    ) {
+      Game.destroy(this);
+      Game.destroy(gameObject);
+    }
   }
 }
 
@@ -579,7 +712,7 @@ class Watcher extends GameObject {
         }
         e.hp -= 1;
         if (e.hp <= 0) {
-          Game.destroy(e);
+          return;
         }
         // Fill style detected.
         ctx.fillStyle = 'rgb(40, 40, 100, 0.4)';
@@ -681,19 +814,26 @@ class HP extends GameObject {
   }
 }
 
+/**
+ * @description The missile thrower, can be destroyed by player bullets.
+ */
 class MissileThrower extends GameObject {
+  /**
+   *
+   * @param {Vec2} pos The initial position
+   */
   constructor(pos = new Vec2(10, 20)) {
     const w = 70;
     const h = 70;
     super(pos, w, h, [], { collider: true });
-    this.colorMis = {};
+    this.colorCircular = {};
     this.renderingFn = {};
     this.path = {};
     this.currentMissile = undefined;
   }
 
   start() {
-    this.colorMis = new RGB(0, 100, 222, 1);
+    this.colorCircular = new RGB(0, 100, 222, 1);
     this.renderingFn = circularColorStandard.bind(this);
   }
 
@@ -726,32 +866,16 @@ class Missile extends GameObject {
      * @type {GameObject}
      */
     this.player = null;
+    this.fnCircular = circularColorStandard.bind(this);
   }
 
   start() {
-    this.colorMis = new RGB(0, 100, 255, 0.9);
+    this.colorCircular = new RGB(0, 100, 255, 0.9);
     [this.player] = Game.getObject('Player');
   }
 
   ownRendering() {
-    this.path = new Path2D();
-
-    ctx.fillStyle = this.colorMis.stringColor();
-    this.path.moveTo(
-      this.position.x + this.width / 2,
-      this.position.y + this.height / 2,
-    );
-    this.path.arc(
-      this.position.x + this.width / 2,
-      this.position.y + this.height / 2,
-      this.height / 2,
-      0,
-      Math.PI * 2,
-      true,
-    );
-    ctx.stroke(this.path);
-    ctx.fill(this.path);
-    this.path.closePath();
+    this.fnCircular();
   }
 
   update() {
@@ -778,40 +902,21 @@ class Missile extends GameObject {
   }
 }
 
-const game = new Game();
-const scene2 = new Scene(window.innerWidth, window.innerHeight);
-const scene = new Scene(window.innerWidth, window.innerHeight);
-canvas.style.backgroundColor = 'purple';
-const missile = new MissileThrower(new Vec2(30, 30));
+class FinishLine extends GameObject {
+  constructor(pos) {
+    super(pos, 100, 100, [], { collider: true });
+    this.fnCircular = {};
+    this.colorCircular = undefined;
+    this.path = undefined;
+  }
 
-const player = new Player(500, true);
-const watcher = new Watcher(
-  100,
-  150,
-  0.2,
-  [new Vec2(100, 100), new Vec2(50, 50), new Vec2(200, 50)],
-  new Vec2(50, 50),
-  true,
-);
-const watcher2 = new Watcher(100, 150, 4, []);
-const wall = new Wall(300, 100, new Vec2(10, 500));
-const hp = new HP();
+  start() {
+    this.path = new Path2D();
+    this.fnCircular = circularColorStandard.bind(this);
+    this.colorCircular = new RGB(100, 255, 30, 1);
+  }
 
-player.position.x += 100;
-
-scene2.add(player);
-scene2.add(watcher);
-scene2.add(watcher2);
-scene2.add(wall);
-scene2.add(hp);
-scene2.add(missile);
-scene.add(player);
-scene.add(watcher);
-scene.add(watcher2);
-scene.add(wall);
-scene.add(hp);
-scene.add(missile);
-
-setTimeout(() => game.start(scene2), 2000);
-game.start(scene);
-console.log(game);
+  ownRendering() {
+    this.fnCircular();
+  }
+}
