@@ -7,6 +7,25 @@ const canvas = document.createElement('canvas');
 const ctx = canvas.getContext('2d');
 document.body.appendChild(canvas);
 
+function circularColorStandard() {
+  ctx.fillStyle = this.colorMis.stringColor();
+  this.path.moveTo(
+    this.position.x + this.width / 2,
+    this.position.y + this.height / 2,
+  );
+  this.path.arc(
+    this.position.x + this.width / 2,
+    this.position.y + this.height / 2,
+    this.height / 2,
+    0,
+    Math.PI * 2,
+    true,
+  );
+  ctx.stroke(this.path);
+  ctx.fill(this.path);
+  this.path.closePath();
+}
+
 class RGB {
   constructor(r, g, b, a = 1) {
     this.r = r;
@@ -151,12 +170,6 @@ class GameObject {
   ownRendering() {}
 
   _render() {
-    // ctx.clearRect(
-    //   this.__positionBefore.x,
-    //   this.__positionBefore.y,
-    //   this.sprites[this.currentSpriteIndex].width,
-    //   this.sprites[this.currentSpriteIndex].height,
-    // );
     this.ownRendering();
     // ctx.
     if (this.sprites.length)
@@ -198,6 +211,9 @@ class Game {
   constructor() {
     this.gameObjects = [];
     this.then = 0;
+    this.stop = false;
+    this.animationFr = 0;
+    this.animation = 0;
   }
 
   static game() {
@@ -283,6 +299,13 @@ class Game {
   }
 
   async start(scene, sprites = []) {
+    if (this.reqAnimationFrame) {
+      this.gameObjects = [];
+      clearInterval(this.reqAnimationFrame);
+      window.cancelAnimationFrame(this.animation);
+      this.then = 0;
+    }
+    console.log(scene.gameObjects);
     this.gameObjects = copy(scene.gameObjects);
     this.gameObjects.forEach((g, index) => {
       g.instanceID = guidGenerator();
@@ -303,6 +326,7 @@ class Game {
       ]),
     );
     this.gameObjects.forEach(g => g.start());
+
     this.update();
   }
 
@@ -327,10 +351,11 @@ class Game {
     gameObject.instanceID = guidGenerator();
     gameObject.start();
     this.gameObjects.push(gameObject);
+    return gameObject;
   }
 
   static instantiate(gameObject, ...params) {
-    _____actualGame.instantiate(gameObject, ...params);
+    return _____actualGame.instantiate(gameObject, ...params);
   }
 
   destroy(gameObject) {
@@ -345,10 +370,14 @@ class Game {
   }
 
   update() {
+    console.log(this.gameObjects);
     const upd = () => {
       const now = Date.now();
       const delta = now - this.then;
-
+      if (delta > 1000) {
+        this.then = now;
+        return;
+      }
       this.gameObjects.forEach(gameObject => {
         gameObject.update(delta / 1000);
       });
@@ -362,9 +391,11 @@ class Game {
       this.then = now;
 
       // Request to do this again ASAP
-      requestAnimationFrame(upd);
+      // this.reqAnimationFrame = requestAnimationFrame(upd);
     };
-    upd();
+    this.reqAnimationFrame = setInterval(() => {
+      this.animation = requestAnimationFrame(upd);
+    }, 15);
   }
 }
 
@@ -650,6 +681,34 @@ class HP extends GameObject {
   }
 }
 
+class MissileThrower extends GameObject {
+  constructor(pos = new Vec2(10, 20)) {
+    const w = 70;
+    const h = 70;
+    super(pos, w, h, [], { collider: true });
+    this.colorMis = {};
+    this.renderingFn = {};
+    this.path = {};
+    this.currentMissile = undefined;
+  }
+
+  start() {
+    this.colorMis = new RGB(0, 100, 222, 1);
+    this.renderingFn = circularColorStandard.bind(this);
+  }
+
+  ownRendering() {
+    this.path = new Path2D();
+    this.renderingFn();
+  }
+
+  update() {
+    if (!this.currentMissile || this.currentMissile.destroyed) {
+      this.currentMissile = Game.instantiate(Missile, this.position);
+    }
+  }
+}
+
 class Missile extends GameObject {
   constructor(pos) {
     super(pos, 40, 40, [], {
@@ -696,6 +755,10 @@ class Missile extends GameObject {
   }
 
   update() {
+    if (!this.player || this.player.destroyed) {
+      Game.destroy(this);
+      return;
+    }
     const [q] = Input.getInputs('q');
     const point = this.player.position;
     let newPos = Vec2.substract(point, this.position);
@@ -716,8 +779,10 @@ class Missile extends GameObject {
 }
 
 const game = new Game();
+const scene2 = new Scene(window.innerWidth, window.innerHeight);
 const scene = new Scene(window.innerWidth, window.innerHeight);
 canvas.style.backgroundColor = 'purple';
+const missile = new MissileThrower(new Vec2(30, 30));
 
 const player = new Player(500, true);
 const watcher = new Watcher(
@@ -734,12 +799,19 @@ const hp = new HP();
 
 player.position.x += 100;
 
+scene2.add(player);
+scene2.add(watcher);
+scene2.add(watcher2);
+scene2.add(wall);
+scene2.add(hp);
+scene2.add(missile);
 scene.add(player);
 scene.add(watcher);
 scene.add(watcher2);
 scene.add(wall);
 scene.add(hp);
+scene.add(missile);
 
+setTimeout(() => game.start(scene2), 2000);
 game.start(scene);
-
 console.log(game);
