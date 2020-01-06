@@ -934,11 +934,13 @@ class MissileThrower extends GameObject {
     this.renderingFn = {};
     this.path = {};
     this.currentMissile = undefined;
+    this.player = {};
   }
 
   start() {
     this.colorCircular = new RGB(0, 100, 222, 1);
     this.renderingFn = circularColorStandard.bind(this);
+    [this.player] = Game.getObject('Player');
   }
 
   ownRendering() {
@@ -947,6 +949,7 @@ class MissileThrower extends GameObject {
   }
 
   update() {
+    if (!this.player || this.player.destroyed) return;
     if (!this.currentMissile || this.currentMissile.destroyed) {
       this.currentMissile = Game.instantiate(Missile, this.position);
     }

@@ -16,6 +16,11 @@ const INPUTS = {
     ),
   MOUSEX: 1,
   MOUSEY: 1,
+  // SPACE VARIANTS
+  SPACEBAR: 32,
+  SPACE: 32,
+  ' ': 32,
+  '': 32,
 };
 
 function guidGenerator() {
@@ -30,7 +35,7 @@ function guidGenerator() {
 /**
  * @description Map keys that will store if an input exists
  */
-const mapKeys = {};
+const mapKeys = new Array(200).fill(0);
 
 /**
  * @description Sets in the object if the input is being pressed (Refactor this in the future)
@@ -57,22 +62,16 @@ class Input {
     window.onkeydown = window.onkeyup = e => {
       // eslint-disable-next-line no-restricted-globals
       e = e || event; // to deal with IE
-      mapKeys[String(e.keyCode)] = e.type === 'keydown';
-      Object.keys(mapKeys).forEach(key => {
-        const keyNumber = parseInt(key, 10);
-        processInput(this.EXTRA_INPUTS, keyNumber, key, 'UP', 'UP');
-        processInput(this.EXTRA_INPUTS, keyNumber, key, 'DOWN', 'BOT');
-        processInput(this.EXTRA_INPUTS, keyNumber, key, 'LEFT', 'LEFT');
-        processInput(this.EXTRA_INPUTS, keyNumber, key, 'RIGHT', 'RIGHT');
-        inputKeys.forEach(key => {
-          processInput(
-            this.EXTRA_INPUTS,
-            keyNumber,
-            INPUTS[key],
-            key.toUpperCase(),
-            key,
-          );
-        });
+      mapKeys[e.keyCode] = e.type === 'keydown';
+      inputKeys.forEach(key => {
+        const keyNumber = parseInt(INPUTS[key], 10);
+        processInput(
+          this.EXTRA_INPUTS,
+          keyNumber,
+          INPUTS[key],
+          key.toUpperCase(),
+          key,
+        );
       });
     };
     document.onmousemove = e => {
