@@ -3,13 +3,48 @@
 /* eslint-disable no-param-reassign */
 /* eslint-disable no-undef */
 /* eslint-disable no-use-before-define */
+
+//
+//  Created by Gabriel Villalonga Simón.
+//  Copyright © 2020 Gabriel Villalonga Simón. All rights reserved.
+//  A game engine and Hide And Seek game. The game engine is just an interface for easier interaction with
+//  the canvas.
+//
+
+/**
+ * TODO Let a player build a box
+ * TODO Limited bullets for a level
+ * TODO Finish line and pass to the next level (scenes)
+ * TODO Build 3 scenes
+ */
+
 const canvas = document.createElement('canvas');
 const ctx = canvas.getContext('2d');
 document.body.appendChild(canvas);
 
 /**
+ * @description A RGB interface with utils
+ */
+class RGB {
+  constructor(r, g, b, a = 1) {
+    this.r = r;
+    this.g = g;
+    this.b = b;
+    this.a = a;
+  }
+
+  /**
+   * @description RGB formated string (for html and canvas color)
+   * @returns {string}
+   */
+  stringColor() {
+    return `rgb(${this.r}, ${this.g}, ${this.b}, ${this.a})`;
+  }
+}
+
+/**
  * @description This function is in charge of calling a circular drawing to a desired "this" object.
- *              Bind it to the class that you wanna work with, make sure that it has colorCircular and path
+ *              Bind it to the class that you wanna work with, make sure that it has colorCircular (RGB type) and path
  *              attributes and then call it on ownRendering()
  */
 function circularColorStandard() {
@@ -32,19 +67,13 @@ function circularColorStandard() {
   this.path.closePath();
 }
 
-class RGB {
-  constructor(r, g, b, a = 1) {
-    this.r = r;
-    this.g = g;
-    this.b = b;
-    this.a = a;
-  }
-
-  stringColor() {
-    return `rgb(${this.r}, ${this.g}, ${this.b}, ${this.a})`;
-  }
-}
-
+/**
+ * @param {number} value
+ * @param {number} x
+ * @param {number} y
+ * @description Clamp a value between x and y
+ * @returns {number}
+ */
 function Clamp(value, x, y) {
   if (value <= x) return x;
   if (value >= y) return y;
@@ -72,6 +101,9 @@ function waitForImages(images) {
   });
 }
 
+/**
+ * @description Returns a DEEP copy of an object, only supports arrays, objects, integers, strings etc...
+ */
 function COPY(a) {
   if (typeof a === 'object') {
     if (Array.isArray(a)) {
@@ -86,15 +118,23 @@ function COPY(a) {
   return a;
 }
 
+/**
+ * @description Returns a copy of an object (better format)
+ */
 function copyObject(a) {
   const copy = {};
+  copy.__proto__ = a.__proto__;
   Object.keys(a).forEach(element => {
     copy[element] = COPY(a[element]);
   });
   return copy;
 }
 
-function copy(array) {
+/**
+ * @description Returns a true copy of an array
+ * @param {Array<*>} array
+ */
+function copyArray(array) {
   const newArray = [];
   array.forEach(a => {
     newArray.push(copyObject(a));
@@ -173,6 +213,14 @@ class Vec2 {
 }
 
 class GameObject {
+  /**
+   * @param {Vec2} position Position of the corner (starts drawing to the right and down, using the CANVAS API)
+   * @param {number} width Width (Collision wise and sprite render wise)
+   * @param {number} height Height (Collision wise and sprite render wise)
+   * @param {string[]} sprites URL's of the sprites
+   * @param {{ color: string, collider: boolean }} configuration The desired configuration for this gameObject, collider will be useful if you want this to collide to things
+   * @description The base gameObject, inherit from this.
+   */
   constructor(
     position,
     width,
@@ -199,6 +247,7 @@ class GameObject {
 
   ownRendering() {}
 
+  // Yea don' touch this
   _render() {
     this.ownRendering();
     // ctx.
@@ -210,6 +259,11 @@ class GameObject {
       );
   }
 
+  /**
+   * @param {number} x
+   * @param {number} y
+   * @description Sets the gameObject to the desired position, use this function instead of changing manually this.position
+   */
   pos(x, y) {
     this.changed = true;
     this.__positionBefore.x = this.position.x;
@@ -223,13 +277,25 @@ class GameObject {
   update() {}
 }
 
+/**
+ * @description A Scene stores GameObjects. It's useful for storing the original information of the gameObjects.
+ *              This means that the gameObjects are stored TWICE in the game, so take in mind that.
+ */
 class Scene {
+  /**
+   * @param {number} w The width of the scene
+   * @param {number} h The height of the scene
+   */
   constructor(w, h) {
     this.gameObjects = [];
     this.width = w;
     this.height = h;
   }
 
+  /**
+   * @description Adds a gameObject to the scene (Won't be instantiated until the next game.start())
+   * @param {GameObject} gameObject The gameObject to add to the scene
+   */
   add(gameObject) {
     this.gameObjects.push(gameObject);
   }
@@ -237,6 +303,9 @@ class Scene {
 
 let _____actualGame = null;
 
+/**
+ * @description The current running game.
+ */
 class Game {
   constructor() {
     this.gameObjects = [];
@@ -266,20 +335,28 @@ class Game {
     return _____actualGame;
   }
 
+  /**
+   * @description Checks a path if it collides with other path
+   * @param {Path2D} path
+   * @returns {GameObject?} Returns null if it doesn't, returns gameObject if it does
+   */
   static checkColPath(path) {
     const l = _____actualGame.gameObjects.length;
-
     for (let i = 0; i < l; i += 1) {
       const otherObject = _____actualGame.gameObjects[i];
       if (
         ctx.isPointInPath(path, otherObject.position.x, otherObject.position.y)
       ) {
-        return true;
+        return otherObject;
       }
     }
     return false;
   }
 
+  /**
+   * @description Using AABB checks if the G.O collides with another collider: true gameObject. Returns cool information about the colliding situation
+   * @param {GameObject} gameObject
+   */
   static checkCol(gameObject) {
     const bottom = gameObject.position.y + gameObject.height;
     const right = gameObject.position.x + gameObject.width;
@@ -344,6 +421,10 @@ class Game {
     };
   }
 
+  /**
+   * @param {Scene} scene The scene that you wanna start the game with. You can change scenes with this as well
+   * @param {string[]} sprites A sprite array to load images.
+   */
   async start(scene, sprites = []) {
     this.scene = scene;
     if (this.reqAnimationFrame) {
@@ -352,7 +433,7 @@ class Game {
       window.cancelAnimationFrame(this.animation);
       this.then = 0;
     }
-    this.gameObjects = copy(scene.gameObjects);
+    this.gameObjects = copyArray(scene.gameObjects);
     this.gameObjects.forEach((g, index) => {
       g.instanceID = guidGenerator();
       g.sprites = scene.gameObjects[index].sprites;
@@ -377,7 +458,8 @@ class Game {
   }
 
   /**
-   * @param {Object} type
+   * @description Checks if a unknownGameObject is of the specified type (Pass constructor)
+   * @param {FunctionConstructor} type
    * @param {GameObject} unknownGameObject
    * @returns {Boolean}
    */
@@ -400,6 +482,11 @@ class Game {
     return objectives;
   }
 
+  /**
+   * @param {GameObjectT} GameObject The gameObject you wanna instantiate (Pass the type, not the instance)
+   * @param  {...any} params The parameters that you wanna pass to the constructor of the gameObject
+   * @returns {GameObject} The instantiated gameObject
+   */
   instantiate(GameObject, ...params) {
     const gameObject = new GameObject(...params);
     gameObject.instanceID = guidGenerator();
@@ -408,10 +495,18 @@ class Game {
     return gameObject;
   }
 
+  /**
+   * @param {GameObjectT} GameObject The gameObject you wanna instantiate (Pass the type, not the instance)
+   * @param  {...any} params The parameters that you wanna pass to the constructor of the gameObject
+   * @returns {GameObject} The instantiated gameObject
+   */
   static instantiate(gameObject, ...params) {
     return _____actualGame.instantiate(gameObject, ...params);
   }
 
+  /**
+   * @param {GameObject} gameObject The gameObject you wanna destroy
+   */
   destroy(gameObject) {
     this.gameObjects = this.gameObjects.filter(gameObjec => {
       gameObject.destroyed = true;
@@ -419,6 +514,9 @@ class Game {
     });
   }
 
+  /**
+   * @param {GameObject} gameObject The gameObject you wanna destroy
+   */
   static destroy(gameObject) {
     _____actualGame.destroy(gameObject);
   }
@@ -482,8 +580,15 @@ class Player extends GameObject {
 
   handleBulletLogic(l, r, u, d) {
     if (!l && !r && !u && !d) return;
-    if (l && r) r = 1;
-    if (u && d) u = 1;
+    // Checks if r & l was pressed at the same time, if it was then set left to 0
+    if (l && r) {
+      r = 1;
+      l = 0;
+    }
+    if (u && d) {
+      d = 0;
+      u = 1;
+    }
     if (!this.state.canShoot) {
       return;
     }
@@ -612,10 +717,11 @@ class Watcher extends GameObject {
     pathOfGoing,
     pos = new Vec2(150, 150),
     follower = false,
-    color = null,
+    colorOfCircle = new RGB(...[255, 10, 0], 1),
+    colorCone = new RGB(...[255, 40, 0], 0.5),
   ) {
     super(pos, 30, 30, [], { collider: true });
-
+    this.colorCone = colorCone;
     this.coneRadius = coneRadius;
     this.speedRotating = speedRotating;
     this.pathOfGoing = pathOfGoing;
@@ -626,12 +732,11 @@ class Watcher extends GameObject {
     this.objectivePlayers = [];
     this.state = { following: false };
     this.follower = follower;
+    this.colorO = colorOfCircle;
   }
 
   start() {
     this.objectivePlayers = Game.getObject('Player');
-    this.colorO = new RGB(255, 10, 0, 1);
-    this.colorCone = new RGB(255, 40, 0, 0.5);
     Game.instantiate(Missile, this.position);
     setInterval(() => {}, 10000);
   }
