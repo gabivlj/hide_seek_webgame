@@ -1,3 +1,4 @@
+/* eslint-disable no-plusplus */
 /* eslint-disable prefer-const */
 /* eslint-disable no-continue */
 /* eslint-disable no-param-reassign */
@@ -12,8 +13,6 @@
 //
 
 /**
- * TODO Let a player build a box
- * TODO Limited bullets for a level
  * TODO Finish line and pass to the next level (scenes)
  * TODO Build 3 scenes
  */
@@ -21,6 +20,17 @@
 const canvas = document.createElement('canvas');
 const ctx = canvas.getContext('2d');
 document.body.appendChild(canvas);
+
+/**
+ * @description Function that satisfies the gameplay programming paradigm of canX = false and canX = true after x milliseconds.
+ * @param {Function} now callback that will be fired the moment this function is called.
+ * @param {Function} future callback that will be fired after x ms.
+ * @param {number} ms milliseconds to wait until the future callback.
+ */
+function nowfuture(now, future, ms = 500) {
+  now();
+  setTimeout(future, ms);
+}
 
 /**
  * @description A RGB interface with utils
@@ -203,7 +213,7 @@ class Vec2 {
   }
 
   /**
-   * @param {number} other
+   * @param {Vec2} other
    * @returns {Vec2}
    */
   add(other) {
@@ -361,7 +371,8 @@ class Game {
     const bottom = gameObject.position.y + gameObject.height;
     const right = gameObject.position.x + gameObject.width;
     const l = _____actualGame.gameObjects.length;
-
+    const collidedGameObjects = [];
+    let conditions;
     for (let i = 0; i < l; i += 1) {
       const otherObject = _____actualGame.gameObjects[i];
 
@@ -381,7 +392,7 @@ class Game {
       const lCollision = Math.floor(right - otherObject.position.x);
       const rCollision = Math.floor(tileRight - gameObject.position.x);
 
-      const conditions = {
+      conditions = {
         left:
           lCollision < rCollision &&
           lCollision < tCollision &&
@@ -407,12 +418,22 @@ class Game {
         gameObject: otherObject,
       };
 
+      collidedGameObjects.push({
+        collided: true,
+        colliderInformation: {
+          conditions,
+          collided: true,
+        },
+      });
+    }
+    if (collidedGameObjects.length) {
       return {
         collided: true,
         colliderInformation: {
           conditions,
           collided: true,
         },
+        arrayCollided: collidedGameObjects,
       };
     }
     return {
@@ -558,7 +579,14 @@ class Player extends GameObject {
     this.path = new Path2D();
     this.hp = 100;
     this.colliding = { top: false, left: false, right: false, down: false };
-    this.state = { hiding: false, won: false, canShoot: true };
+    this.state = {
+      hiding: false,
+      won: false,
+      canShoot: true,
+      canWall: true,
+      wallsLeft: 3,
+      bulletsLeft: 10,
+    };
   }
 
   ownRendering() {
@@ -578,7 +606,30 @@ class Player extends GameObject {
     ctx.fill(this.path);
   }
 
+  handleWallBuild(space) {
+    if (!space) return;
+    if (this.state.wallsLeft <= 0) return;
+    if (!this.state.canWall) return;
+    nowfuture(
+      () => {
+        this.state.canWall = false;
+      },
+      () => {
+        this.state.canWall = true;
+      },
+      500,
+    );
+    const instanceNextPos = this.position.add(
+      new Vec2(this.signX * this.width, this.signY * this.height),
+    );
+    this.state.wallsLeft -= 1;
+    // w, h, pos, col = 'rgb(200, 200, 200)'
+    Game.instantiate(Wall, this.width, this.height, instanceNextPos);
+  }
+
   handleBulletLogic(l, r, u, d) {
+    if (!this.state.canShoot) return;
+    if (this.state.bulletsLeft <= 0) return;
     if (!l && !r && !u && !d) return;
     // Checks if r & l was pressed at the same time, if it was then set left to 0
     if (l && r) {
@@ -589,9 +640,16 @@ class Player extends GameObject {
       d = 0;
       u = 1;
     }
-    if (!this.state.canShoot) {
-      return;
-    }
+
+    nowfuture(
+      () => {
+        this.state.canShoot = false;
+      },
+      () => {
+        this.state.canShoot = true;
+      },
+      500,
+    );
     const truePosition = new Vec2(
       this.position.x - this.width / 2,
       this.position.y + this.height / 2,
@@ -604,6 +662,7 @@ class Player extends GameObject {
     Game.instantiate(Bullet, signX, signY, newPos);
     this.state.canShoot = false;
     setTimeout(() => {
+      this.state.bulletsLeft -= 1;
       this.state.canShoot = true;
     }, 500);
   }
@@ -611,7 +670,7 @@ class Player extends GameObject {
   start() {}
 
   update(dt) {
-    let [w, a, d, s, q, lt, rt, up, dwn] = Input.getInputs(
+    let [w, a, d, s, q, lt, rt, up, dwn, spacebar] = Input.getInputs(
       'w',
       'a',
       'd',
@@ -621,7 +680,9 @@ class Player extends GameObject {
       'right',
       'up',
       'down',
+      ' ',
     );
+    this.handleWallBuild(spacebar);
     this.handleBulletLogic(lt, rt, up, dwn);
     this.colliding = { top: false, left: false, right: false, down: false };
     if (this.hp <= 0) {
@@ -645,20 +706,24 @@ class Player extends GameObject {
     const collision = Game.checkCol(this, this.path);
 
     if (collision.collided) {
-      if (collision.colliderInformation.conditions.top) {
-        if (s > 0) s = 0;
-        this.colliding.down = true;
-      } else if (collision.colliderInformation.conditions.bot) {
-        if (w > 0) w = 0;
-        this.colliding.top = true;
-      }
-      if (collision.colliderInformation.conditions.left) {
-        if (d > 0) d = 0;
-        this.colliding.right = true;
-      } else if (collision.colliderInformation.conditions.right) {
-        if (a > 0) a = 0;
-        this.colliding.left = true;
-      }
+      collision.arrayCollided.forEach(collision => {
+        if (collision.colliderInformation.conditions.top) {
+          if (s > 0) s = 0;
+          this.colliding.down = true;
+        }
+        if (collision.colliderInformation.conditions.bot) {
+          if (w > 0) w = 0;
+          this.colliding.top = true;
+        }
+        if (collision.colliderInformation.conditions.left) {
+          if (d > 0) d = 0;
+          this.colliding.right = true;
+        }
+        if (collision.colliderInformation.conditions.right) {
+          if (a > 0) a = 0;
+          this.colliding.left = true;
+        }
+      });
     }
     this.pos(
       this.position.x + (-a + d) * dt * this.speed,
@@ -737,7 +802,6 @@ class Watcher extends GameObject {
 
   start() {
     this.objectivePlayers = Game.getObject('Player');
-    Game.instantiate(Missile, this.position);
     setInterval(() => {}, 10000);
   }
 
@@ -987,10 +1051,14 @@ class Missile extends GameObject {
 
   collideWall() {
     const collide = Game.checkCol(this);
-    if (!collide.collided) return;
-    if (Game.IsType(Wall, collide.colliderInformation.conditions.gameObject)) {
-      Game.destroy(this);
-    }
+    if (!collide.collided) return false;
+    collide.arrayCollided.forEach(collide => {
+      if (
+        Game.IsType(Wall, collide.colliderInformation.conditions.gameObject)
+      ) {
+        Game.destroy(this);
+      }
+    });
   }
 
   update() {
@@ -1018,12 +1086,14 @@ class Missile extends GameObject {
   }
 }
 
+const scenes = [];
 class FinishLine extends GameObject {
   constructor(pos) {
     super(pos, 100, 100, [], { collider: true });
     this.fnCircular = {};
     this.colorCircular = undefined;
     this.path = undefined;
+    this.currentScene = 0;
   }
 
   start() {
@@ -1035,4 +1105,167 @@ class FinishLine extends GameObject {
   ownRendering() {
     this.fnCircular();
   }
+
+  update() {
+    const collide = Game.checkCol(this);
+    if (!collide.collided) return;
+    if (!Game.IsType(Player, collide.colliderInformation.conditions.gameObject))
+      return;
+    this.currentScene = (this.currentScene + 1) % scenes.length;
+    Game.start(scenes[this.currentScene]);
+  }
 }
+
+// / MAPS
+
+class MapGame {
+  initiate() {
+    this.scene = new Scene(window.innerWidth, window.innerHeight);
+    const colorW = new RGB(103, 0, 135).stringColor();
+    const posPlayer = new Vec2(100, 100);
+    // WATCHERS
+    const watchers = [
+      new Watcher(100, 150, 3, [], new Vec2(919, 249), false),
+      new Watcher(100, 150, 3, [], new Vec2(551, 158), true),
+      new Watcher(
+        100,
+        150,
+        3,
+        [new Vec2(771, 739), new Vec2(925, 588), new Vec2(771, 739)],
+        new Vec2(771, 739),
+        true,
+      ),
+      new Watcher(100, 150, 3, [], new Vec2(1196, 429), true),
+      new Watcher(
+        100,
+        150,
+        3,
+        [new Vec2(1164, 812), new Vec2(1166, 603), new Vec2(1005, 702)],
+        new Vec2(1005, 702),
+        true,
+      ),
+      new Watcher(100, 150, 3, [], new Vec2(1144, 200), false),
+      new Watcher(
+        100,
+        150,
+        3,
+        [
+          new Vec2(493, 575),
+          new Vec2(506, 835),
+          new Vec2(113, 719),
+          new Vec2(362, 668),
+        ],
+        new Vec2(362, 668),
+        true,
+      ),
+      new Watcher(
+        100,
+        150,
+        3,
+        [
+          new Vec2(82, 563),
+          new Vec2(101, 377),
+          new Vec2(347, 366),
+          new Vec2(347, 569),
+        ],
+        new Vec2(347, 569),
+        true,
+      ),
+      new Watcher(
+        100,
+        150,
+        3,
+        [
+          new Vec2(84, 366),
+          new Vec2(84, 366),
+          new Vec2(342, 367),
+          new Vec2(347, 571),
+          new Vec2(97, 578),
+        ],
+        new Vec2(97, 578),
+        true,
+      ),
+      new Watcher(
+        100,
+        150,
+        3,
+        [
+          new Vec2(350, 371),
+          new Vec2(350, 371),
+          new Vec2(347, 571),
+          new Vec2(105, 567),
+          new Vec2(102, 360),
+        ],
+        new Vec2(102, 360),
+        true,
+      ),
+    ];
+    // SPECIAL WATCHERS
+
+    // WALLS
+    const walls = [
+      new Wall(702, 31, new Vec2(440, 497), 'rgb(103, 0, 135, 1)'),
+      new Wall(this.scene.width, 50, new Vec2(0, 0), colorW),
+      new Wall(
+        this.scene.width,
+        50,
+        new Vec2(0, this.scene.height - 50),
+        colorW,
+      ),
+      new Wall(50, this.scene.height, new Vec2(0, 0), colorW),
+      new Wall(
+        50,
+        this.scene.height,
+        new Vec2(window.innerWidth - 50, 0),
+        colorW,
+      ),
+      new Wall(400, 30, posPlayer.add(new Vec2(-posPlayer.x, 100)), colorW),
+      new Wall(400, 30, posPlayer.add(new Vec2(300, 200)), colorW),
+      new Wall(40, 400, posPlayer.add(new Vec2(300, 100)), colorW),
+      new Wall(300, 30, posPlayer.add(new Vec2(-posPlayer.x, 200)), colorW),
+      new Wall(300, 30, posPlayer.add(new Vec2(-posPlayer.x, 500)), colorW),
+      new Wall(43, 104, new Vec2(397, 99), 'rgb(103, 0, 135, 1)'),
+      new MissileThrower(new Vec2(508, 416)),
+      new MissileThrower(new Vec2(630, 416)),
+    ];
+
+    walls.forEach(element => this.scene.add(element));
+    watchers.forEach(element => this.scene.add(element));
+    // PLAYER
+    const player = new Player(500, true, posPlayer);
+    this.scene.add(player);
+    this.scene.add(new HP());
+    // MISSILETHROWERS
+
+    return this.scene;
+  }
+}
+
+let currPoint = { x: 0, y: 0 };
+const listOfClicked = [];
+let clickBef = null;
+
+window.onclick = e => {
+  clickBef = { x: currPoint.x, y: currPoint.y };
+  currPoint = new Vec2(e.clientX, e.clientY);
+  listOfClicked.push(currPoint);
+  console.log(`new Vec2(${currPoint.x}, ${currPoint.y})`);
+};
+
+window.onmousewheel = e => {
+  const w = currPoint.x - clickBef.x;
+  const h = currPoint.y - clickBef.y;
+  const posW = `new Vec2(${clickBef.x}, ${clickBef.y})`;
+  const posForOthers = `new Vec2(${currPoint.x}, ${currPoint.y})`;
+  const colorWall = new RGB(103, 0, 135).stringColor();
+  console.log(`new Wall(${w}, ${h}, ${posW}, '${colorWall}')`);
+  console.log(`new Watcher(
+       100,
+       150,
+       3,
+       [${listOfClicked.map(a => `new Vec2(${a.x}, ${a.y})`)}],
+       ${posForOthers},
+       true,
+     )`);
+  console.log(`new MissileThrower(${posForOthers})`);
+};
